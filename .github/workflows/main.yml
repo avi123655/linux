@@ -1,4 +1,4 @@
-name: Linux RDP via Tailscale
+name: Linux RDP via Tailscale (Stable)
 
 on:
   workflow_dispatch:
@@ -9,62 +9,79 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Install XFCE desktop + XRDP
+      - name: Install full XFCE desktop + XRDP (stable config)
         run: |
           sudo apt update -y
-          sudo apt install -y xfce4 xfce4-goodies xrdp dbus-x11
+          sudo DEBIAN_FRONTEND=noninteractive apt install -y \
+            xfce4 xfce4-goodies xorg xrdp dbus-x11 x11-xserver-utils policykit-1 \
+            pulseaudio
+
+          # Enable and start XRDP
           sudo systemctl enable xrdp
           sudo systemctl start xrdp
 
-          # Create user
+          # Create RDP user
           sudo adduser rdpuser --disabled-password --gecos ""
           echo "rdpuser:avishidk" | sudo chpasswd
 
-          # Configure XFCE startup
-          echo "startxfce4" | sudo tee /home/rdpuser/.xsession > /dev/null
-          sudo chown rdpuser:rdpuser /home/rdpuser/.xsession
+          # Create runtime directory for dbus
+          USER_ID=$(id -u rdpuser)
+          sudo mkdir -p /run/user/$USER_ID
+          sudo chown rdpuser:rdpuser /run/user/$USER_ID
+          sudo chmod 700 /run/user/$USER_ID
+
+          # Create home environment
+          sudo mkdir -p /home/rdpuser/.config
+          echo "exec dbus-launch --exit-with-session startxfce4" | sudo tee /home/rdpuser/.xsession > /dev/null
+          echo "export XDG_RUNTIME_DIR=/run/user/$USER_ID" | sudo tee -a /home/rdpuser/.profile > /dev/null
+          echo "export XDG_CONFIG_DIRS=/etc/xdg" | sudo tee -a /home/rdpuser/.profile > /dev/null
+          echo "export DISPLAY=:10" | sudo tee -a /home/rdpuser/.profile > /dev/null
+          sudo chown -R rdpuser:rdpuser /home/rdpuser
           sudo chmod 644 /home/rdpuser/.xsession
 
-          # Ensure environment variables and D-Bus work
-          echo "export XDG_CONFIG_DIRS=/etc/xdg" | sudo tee -a /home/rdpuser/.profile > /dev/null
-          echo "export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$(id -u)/bus" | sudo tee -a /home/rdpuser/.profile > /dev/null
-          sudo mkdir -p /run/user/$(id -u rdpuser)
-          sudo chown rdpuser:rdpuser /run/user/$(id -u rdpuser)
+          # Restart XRDP after environment setup
+          sudo systemctl restart xrdp
 
-      - name: Install Tailscale
+          # Sanity check
+          echo "✅ XFCE + XRDP installed successfully."
+
+      - name: Install Tailscale and connect
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-linux-${{ github.run_id }}
-
-          # Capture IP
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} \
+                            --hostname=gh-linux-${{ github.run_id }} \
+                            --accept-routes --accept-dns=true
           TS_IP=$(tailscale ip -4 | head -n 1)
           echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
-          echo "Tailscale IP: $TS_IP"
+          echo "✅ Tailscale connected with IP: $TS_IP"
 
-      - name: Verify XRDP
+      - name: Verify XRDP service
         run: |
-          sudo systemctl status xrdp | head -n 20
-          sudo ss -tulpn | grep 3389 || echo "⚠️ XRDP not listening!"
+          echo "Checking XRDP status..."
+          sudo systemctl status xrdp | head -n 15
+          echo ""
+          sudo ss -tulpn | grep 3389 && echo "✅ XRDP is listening on port 3389"
 
-      - name: Show connection info
+      - name: Display RDP connection details
         run: |
           echo ""
           echo "======================================"
-          echo "✅ RDP Access via Tailscale is Ready!"
+          echo "✅ LINUX RDP VIA TAILSCALE IS READY"
           echo "--------------------------------------"
-          echo "Tailscale IP: $TAILSCALE_IP"
-          echo "Username: rdpuser"
-          echo "Password: avishidk"
+          echo "Tailscale IP : $TAILSCALE_IP"
+          echo "Username     : rdpuser"
+          echo "Password     : avishidk"
+          echo "Session type : Xorg"
           echo "--------------------------------------"
-          echo "Use an RDP client (mstsc /v:$TAILSCALE_IP)"
-          echo "Session type: Xorg"
+          echo "👉 Connect using any RDP client:"
+          echo "    mstsc /v:$TAILSCALE_IP"
           echo "======================================"
           echo ""
 
-      - name: Keep RDP alive
+      - name: Keep session alive
         run: |
-          echo "Keeping RDP session alive..."
+          echo "Keeping RDP session alive for 6 hours..."
           while true; do
-            echo "$(date): runner alive"
+            echo "$(date): RDP session active"
             sleep 300
           done
