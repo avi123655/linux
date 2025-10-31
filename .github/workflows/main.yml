@@ -1,0 +1,53 @@
+name: Linux RDP via Tailscale
+
+on:
+  workflow_dispatch:
+
+jobs:
+  rdp-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Update and install desktop + RDP server
+        run: |
+          sudo apt update -y
+          sudo apt install -y xfce4 xfce4-goodies xrdp
+          sudo systemctl enable xrdp
+          sudo systemctl start xrdp
+          sudo adduser rdpuser --disabled-password --gecos ""
+          echo "rdpuser:$(openssl rand -base64 12)" | sudo chpasswd
+          
+          # Show credentials in logs
+          echo "USERNAME=rdpuser" >> $GITHUB_ENV
+          echo "PASSWORD=$(sudo grep rdpuser /etc/shadow | cut -d: -f2)" >> $GITHUB_ENV
+
+      - name: Install Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-linux-${{ github.run_id }}
+          
+          # Get Tailscale IP
+          TS_IP=$(tailscale ip -4)
+          echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
+          echo "Tailscale IP: $TS_IP"
+
+      - name: Verify RDP Port
+        run: |
+          sudo ss -tulpn | grep 3389 || echo "xrdp not listening?"
+
+      - name: Output connection details
+        run: |
+          echo "=== RDP ACCESS INFO ==="
+          echo "Tailscale IP: $TAILSCALE_IP"
+          echo "Username: rdpuser"
+          echo "Password: (the one generated above)"
+          echo "======================="
+
+      - name: Keep session alive
+        run: |
+          echo "Keeping RDP session alive..."
+          while true; do
+            echo "$(date): still alive"
+            sleep 300
+          done
