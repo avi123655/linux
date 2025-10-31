@@ -12,42 +12,51 @@ jobs:
       - name: Update and install desktop + RDP server
         run: |
           sudo apt update -y
-          sudo apt install -y xfce4 xfce4-goodies xrdp
+          sudo apt install -y xfce4 xfce4-goodies xrdp dbus-x11
           sudo systemctl enable xrdp
           sudo systemctl start xrdp
+
+          # Create RDP user with your chosen password
           sudo adduser rdpuser --disabled-password --gecos ""
-          echo "rdpuser:$(openssl rand -base64 12)" | sudo chpasswd
-          
-          # Show credentials in logs
-          echo "USERNAME=rdpuser" >> $GITHUB_ENV
-          echo "PASSWORD=$(sudo grep rdpuser /etc/shadow | cut -d: -f2)" >> $GITHUB_ENV
+          echo "rdpuser:avishidk" | sudo chpasswd
+
+          # Configure session for XFCE
+          echo xfce4-session > /home/rdpuser/.xsession
+          sudo chown rdpuser:rdpuser /home/rdpuser/.xsession
 
       - name: Install Tailscale
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-linux-${{ github.run_id }}
-          
-          # Get Tailscale IP
-          TS_IP=$(tailscale ip -4)
+
+          # Fetch the assigned Tailscale IP
+          TS_IP=$(tailscale ip -4 | head -n 1)
           echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
           echo "Tailscale IP: $TS_IP"
 
-      - name: Verify RDP Port
+      - name: Verify XRDP is listening
         run: |
-          sudo ss -tulpn | grep 3389 || echo "xrdp not listening?"
+          sudo ss -tulpn | grep 3389 || echo "⚠️ XRDP not listening on port 3389"
 
-      - name: Output connection details
+      - name: Display connection details
         run: |
-          echo "=== RDP ACCESS INFO ==="
+          echo ""
+          echo "======================================"
+          echo "✅ RDP Access via Tailscale is Ready!"
+          echo "--------------------------------------"
           echo "Tailscale IP: $TAILSCALE_IP"
           echo "Username: rdpuser"
-          echo "Password: (the one generated above)"
-          echo "======================="
+          echo "Password: avishidk"
+          echo "--------------------------------------"
+          echo "Connect using any RDP client:"
+          echo "  mstsc /v:$TAILSCALE_IP"
+          echo "======================================"
+          echo ""
 
-      - name: Keep session alive
+      - name: Keep the session alive
         run: |
-          echo "Keeping RDP session alive..."
+          echo "Keeping the RDP session alive..."
           while true; do
-            echo "$(date): still alive"
+            echo "$(date): still active"
             sleep 300
           done
