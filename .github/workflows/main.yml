@@ -9,6 +9,12 @@ jobs:
     timeout-minutes: 360
 
     steps:
+      # Set the environment variable XDG_CONFIG_DIRS
+      - name: Set environment variable for XDG_CONFIG_DIRS
+        run: |
+          echo "XDG_CONFIG_DIRS=/etc/xdg" >> $GITHUB_ENV
+          
+      # Install full XFCE desktop + XRDP (stable config)
       - name: Install full XFCE desktop + XRDP (stable config)
         run: |
           sudo apt update -y
@@ -34,7 +40,6 @@ jobs:
           sudo mkdir -p /home/rdpuser/.config
           echo "exec dbus-launch --exit-with-session startxfce4" | sudo tee /home/rdpuser/.xsession > /dev/null
           echo "export XDG_RUNTIME_DIR=/run/user/$USER_ID" | sudo tee -a /home/rdpuser/.profile > /dev/null
-          echo "export XDG_CONFIG_DIRS=/etc/xdg" | sudo tee -a /home/rdpuser/.profile > /dev/null
           echo "export DISPLAY=:10" | sudo tee -a /home/rdpuser/.profile > /dev/null
           sudo chown -R rdpuser:rdpuser /home/rdpuser
           sudo chmod 644 /home/rdpuser/.xsession
@@ -45,6 +50,7 @@ jobs:
           # Sanity check
           echo "✅ XFCE + XRDP installed successfully."
 
+      # Install Tailscale and connect
       - name: Install Tailscale and connect
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
@@ -55,6 +61,7 @@ jobs:
           echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
           echo "✅ Tailscale connected with IP: $TS_IP"
 
+      # Verify XRDP service is running
       - name: Verify XRDP service
         run: |
           echo "Checking XRDP status..."
@@ -62,6 +69,7 @@ jobs:
           echo ""
           sudo ss -tulpn | grep 3389 && echo "✅ XRDP is listening on port 3389"
 
+      # Display RDP connection details
       - name: Display RDP connection details
         run: |
           echo ""
@@ -78,6 +86,7 @@ jobs:
           echo "======================================"
           echo ""
 
+      # Keep session alive
       - name: Keep session alive
         run: |
           echo "Keeping RDP session alive for 6 hours..."
